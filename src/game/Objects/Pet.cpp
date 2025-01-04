@@ -1203,6 +1203,10 @@ void Pet::GivePetXP(uint32 xp)
     if (getPetType() != HUNTER_PET)
         return;
 
+    if (Player* pOwner = GetOwnerPlayer())
+        if (pOwner->GetPersonalXpRate() >= 0.0f)
+            xp *= pOwner->GetPersonalXpRate();
+
     if (xp < 1)
         return;
 
@@ -1460,7 +1464,6 @@ bool Pet::InitStatsForLevel(uint32 petlevel, Unit const* owner)
             {
                 SetCreateHealth(pInfo->health * healthMod);
                 SetCreateResistance(SPELL_SCHOOL_NORMAL, int32(pInfo->armor));
-                //SetModifierValue(UNIT_MOD_ATTACK_POWER, BASE_VALUE, float(cinfo->attack_power));
 
                 for (int i = STAT_STRENGTH; i < MAX_STATS; ++i)
                     SetCreateStat(Stats(i),  float(pInfo->stats[i]));
@@ -2369,13 +2372,7 @@ void Pet::CastPetAura(PetAura const* aura)
     if (!auraId)
         return;
 
-    if (auraId == 35696)                                      // Demonic Knowledge
-    {
-        int32 basePoints = int32(aura->GetDamage() * (GetStat(STAT_STAMINA) + GetStat(STAT_INTELLECT)) / 100);
-        CastCustomSpell(this, auraId, basePoints, {}, {}, true);
-    }
-    else
-        CastSpell(this, auraId, true);
+    CastSpell(this, auraId, true);
 }
 
 void Pet::RemoveAllCooldowns(bool sendOnly)

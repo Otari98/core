@@ -303,6 +303,10 @@ enum eConfigUInt32Values
     CONFIG_UINT32_AC_MOVEMENT_CHEAT_NO_FALL_TIME_PENALTY,
     CONFIG_UINT32_AC_MOVEMENT_CHEAT_BAD_FALL_RESET_THRESHOLD,
     CONFIG_UINT32_AC_MOVEMENT_CHEAT_BAD_FALL_RESET_PENALTY,
+    CONFIG_UINT32_AC_MOVEMENT_CHEAT_BAD_FALL_STOP_THRESHOLD,
+    CONFIG_UINT32_AC_MOVEMENT_CHEAT_BAD_FALL_STOP_PENALTY,
+    CONFIG_UINT32_AC_MOVEMENT_CHEAT_BAD_MOVE_START_THRESHOLD,
+    CONFIG_UINT32_AC_MOVEMENT_CHEAT_BAD_MOVE_START_PENALTY,
     CONFIG_UINT32_AC_MOVEMENT_CHEAT_TELEPORT_THRESHOLD,
     CONFIG_UINT32_AC_MOVEMENT_CHEAT_TELEPORT_PENALTY,
     CONFIG_UINT32_AC_MOVEMENT_CHEAT_TELE_TO_TRANSPORT_THRESHOLD,
@@ -573,8 +577,9 @@ enum eConfigBoolValues
     CONFIG_BOOL_AC_MOVEMENT_CHEAT_FLY_ENABLED,
     CONFIG_BOOL_AC_MOVEMENT_CHEAT_FLY_REJECT,
     CONFIG_BOOL_AC_MOVEMENT_CHEAT_NO_FALL_TIME_ENABLED,
-    CONFIG_BOOL_AC_MOVEMENT_CHEAT_NO_FALL_TIME_REJECT,
     CONFIG_BOOL_AC_MOVEMENT_CHEAT_BAD_FALL_RESET_ENABLED,
+    CONFIG_BOOL_AC_MOVEMENT_CHEAT_BAD_FALL_STOP_ENABLED,
+    CONFIG_BOOL_AC_MOVEMENT_CHEAT_BAD_MOVE_START_ENABLED,
     CONFIG_BOOL_AC_MOVEMENT_CHEAT_TELEPORT_ENABLED,
     CONFIG_BOOL_AC_MOVEMENT_CHEAT_TELEPORT_REJECT,
     CONFIG_BOOL_AC_MOVEMENT_CHEAT_TELE_TO_TRANSPORT_ENABLED,
@@ -609,6 +614,8 @@ enum eConfigBoolValues
     CONFIG_BOOL_GM_CHEAT_GOD,
     CONFIG_BOOL_LFG_MATCHMAKING,
     CONFIG_BOOL_LIMIT_PLAY_TIME,
+    CONFIG_BOOL_RESTRICT_UNVERIFIED_ACCOUNTS,
+    CONFIG_BOOL_DURABILITY_LOSS_ENABLE,
     CONFIG_BOOL_VALUE_COUNT
 };
 
@@ -624,45 +631,10 @@ enum RealmType
                                                             // replaced by REALM_PVP in realm list
 };
 
-// [-ZERO] Need drop not existed cases
-enum RealmZone
-{
-    REALM_ZONE_UNKNOWN       = 0,                           // any language
-    REALM_ZONE_DEVELOPMENT   = 1,                           // any language
-    REALM_ZONE_UNITED_STATES = 2,                           // extended-Latin
-    REALM_ZONE_OCEANIC       = 3,                           // extended-Latin
-    REALM_ZONE_LATIN_AMERICA = 4,                           // extended-Latin
-    REALM_ZONE_TOURNAMENT_5  = 5,                           // basic-Latin at create, any at login
-    REALM_ZONE_KOREA         = 6,                           // East-Asian
-    REALM_ZONE_TOURNAMENT_7  = 7,                           // basic-Latin at create, any at login
-    REALM_ZONE_ENGLISH       = 8,                           // extended-Latin
-    REALM_ZONE_GERMAN        = 9,                           // extended-Latin
-    REALM_ZONE_FRENCH        = 10,                          // extended-Latin
-    REALM_ZONE_SPANISH       = 11,                          // extended-Latin
-    REALM_ZONE_RUSSIAN       = 12,                          // Cyrillic
-    REALM_ZONE_TOURNAMENT_13 = 13,                          // basic-Latin at create, any at login
-    REALM_ZONE_TAIWAN        = 14,                          // East-Asian
-    REALM_ZONE_TOURNAMENT_15 = 15,                          // basic-Latin at create, any at login
-    REALM_ZONE_CHINA         = 16,                          // East-Asian
-    REALM_ZONE_CN1           = 17,                          // basic-Latin at create, any at login
-    REALM_ZONE_CN2           = 18,                          // basic-Latin at create, any at login
-    REALM_ZONE_CN3           = 19,                          // basic-Latin at create, any at login
-    REALM_ZONE_CN4           = 20,                          // basic-Latin at create, any at login
-    REALM_ZONE_CN5           = 21,                          // basic-Latin at create, any at login
-    REALM_ZONE_CN6           = 22,                          // basic-Latin at create, any at login
-    REALM_ZONE_CN7           = 23,                          // basic-Latin at create, any at login
-    REALM_ZONE_CN8           = 24,                          // basic-Latin at create, any at login
-    REALM_ZONE_TOURNAMENT_25 = 25,                          // basic-Latin at create, any at login
-    REALM_ZONE_TEST_SERVER   = 26,                          // any language
-    REALM_ZONE_TOURNAMENT_27 = 27,                          // basic-Latin at create, any at login
-    REALM_ZONE_QA_SERVER     = 28,                          // any language
-    REALM_ZONE_CN9           = 29                           // basic-Latin at create, any at login
-};
-
 class SessionPacketSendTask
 {
-    SessionPacketSendTask(const SessionPacketSendTask&) = delete;
 public:
+    SessionPacketSendTask(SessionPacketSendTask const&) = delete;
     SessionPacketSendTask(uint32 accountId, WorldPacket& data) : m_accountId(accountId), m_data(data) {}
     void operator ()();
 private:
@@ -786,7 +758,7 @@ class World
         // Uptime (in secs)
         uint32 GetUptime() const { return uint32(m_gameTime - m_startTime); }
 
-        tm *GetLocalTimeByTime(time_t now) const { return localtime(&now); }
+        static tm *GetLocalTimeByTime(time_t now) { return localtime(&now); }
 
         uint32 GetLastMaintenanceDay() const
         {
@@ -854,8 +826,8 @@ class World
         bool getConfig(eConfigBoolValues index) const { return m_configBoolValues[index]; }
 
         // Are we on a "Player versus Player" server?
-        bool IsPvPRealm() { return (getConfig(CONFIG_UINT32_GAME_TYPE) == REALM_TYPE_PVP || getConfig(CONFIG_UINT32_GAME_TYPE) == REALM_TYPE_RPPVP || getConfig(CONFIG_UINT32_GAME_TYPE) == REALM_TYPE_FFA_PVP); }
-        bool IsFFAPvPRealm() { return getConfig(CONFIG_UINT32_GAME_TYPE) == REALM_TYPE_FFA_PVP; }
+        bool IsPvPRealm() const { return (getConfig(CONFIG_UINT32_GAME_TYPE) == REALM_TYPE_PVP || getConfig(CONFIG_UINT32_GAME_TYPE) == REALM_TYPE_RPPVP || getConfig(CONFIG_UINT32_GAME_TYPE) == REALM_TYPE_FFA_PVP); }
+        bool IsFFAPvPRealm() const { return getConfig(CONFIG_UINT32_GAME_TYPE) == REALM_TYPE_FFA_PVP; }
 
         void KickAll();
         void KickAllLess(AccountTypes sec);
@@ -889,7 +861,7 @@ class World
         LocaleConstant GetAvailableDbcLocale(LocaleConstant locale) const { if (m_availableDbcLocaleMask & (1 << locale)) return locale; else return m_defaultDbcLocale; }
 
         // Nostalrius
-        MovementBroadcaster* GetBroadcaster() { return m_broadcaster.get(); }
+        MovementBroadcaster* GetBroadcaster() const { return m_broadcaster.get(); }
         float GetTimeRate() const { return m_timeRate; }
         void SetTimeRate(float rate) { m_timeRate = rate; }
         float m_timeRate;
@@ -1015,6 +987,7 @@ class World
 
         // This thread handles packets while the world sessions update is not running
         std::unique_ptr<std::thread> m_asyncPacketsThread;
+        std::mutex m_asyncPacketsMutex;
         bool m_canProcessAsyncPackets;
         void ProcessAsyncPackets();
 
@@ -1060,6 +1033,7 @@ class World
 };
 
 extern uint32 realmID;
+extern std::string realmName;
 
 #define sWorld MaNGOS::Singleton<World>::Instance()
 #endif

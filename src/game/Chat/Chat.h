@@ -25,6 +25,7 @@
 #include "Common.h"
 #include "SharedDefines.h"
 #include "ObjectGuid.h"
+#include <memory>
 
 struct AreaTriggerTeleport;
 struct AreaTriggerEntry;
@@ -196,6 +197,7 @@ class ChatHandler
         //Cheats
         bool HandleCheatStatusCommand(char *);
         bool HandleCheatFlyCommand(char* args);
+        bool HandleCheatFixedZCommand(char* args);
         bool HandleCheatGodCommand(char *);
         bool HandleCheatCooldownCommand(char *);
         bool HandleCheatCastTimeCommand(char *);
@@ -738,6 +740,7 @@ class ChatHandler
 
         bool HandleUnitAIInfoCommand(char* args);
         bool HandleUnitInfoCommand(char* args);
+        bool HandleUnitMoveInfoCommand(char* args);
         bool HandleUnitSpeedInfoCommand(char* args);
         bool HandleUnitStatInfoCommand(char* args);
         bool HandleUnitUpdateFieldsInfoCommand(char* args);
@@ -851,7 +854,6 @@ class ChatHandler
         bool HandleReloadReputationRewardRateCommand(char* args);
         bool HandleReloadReputationSpilloverTemplateCommand(char* args);
         bool HandleReloadSkillFishingBaseLevelCommand(char* args);
-        bool HandleReloadSpellAffectCommand(char* args);
         bool HandleReloadSpellAreaCommand(char* args);
         bool HandleReloadSpellChainCommand(char* args);
         bool HandleReloadSpellElixirCommand(char* args);

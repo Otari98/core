@@ -92,13 +92,13 @@ void WorldSession::HandleMoveWorldportAckOpcode()
     }
 
     // reset instance validity, except if going to an instance inside an instance
-    if (!GetPlayer()->m_InstanceValid && !mEntry->IsDungeon())
-        GetPlayer()->m_InstanceValid = true;
+    if (!GetPlayer()->m_instanceValid && !mEntry->IsDungeon())
+        GetPlayer()->m_instanceValid = true;
 
     // relocate the player to the teleport destination
     if (!map)
     {
-        if (loc.mapId <= 1)
+        if (loc.mapId <= MAX_CONTINENT_ID)
             GetPlayer()->SetLocationInstanceId(sMapMgr.GetContinentInstanceId(loc.mapId, loc.x, loc.y));
         map = sMapMgr.CreateMap(loc.mapId, GetPlayer());
     }
@@ -332,8 +332,6 @@ void WorldSession::HandleMovementOpcodes(WorldPacket& recvData)
     else if (opcode == MSG_MOVE_FALL_LAND)
         pMover->SetJumpInitialSpeed(-9.645f);
 
-    HandleMoverRelocation(pMover, movementInfo);
-
     // fall damage generation (ignore in flight case that can be triggered also at lags in moment teleportation to another map).
     if (opcode == MSG_MOVE_FALL_LAND && pPlayerMover && !pPlayerMover->IsTaxiFlying())
         pPlayerMover->HandleFall(movementInfo);
@@ -343,13 +341,12 @@ void WorldSession::HandleMovementOpcodes(WorldPacket& recvData)
     if (pPlayerMover)
     {
         if (IsFallEndOpcode(opcode) && pPlayerMover->IsLaunched())
-        {
             pPlayerMover->SetLaunched(false);
-            pPlayerMover->SetXYSpeed(0.0f);
-        }
 
         pPlayerMover->UpdateFallInformationIfNeed(movementInfo, opcode);
     }
+
+    HandleMoverRelocation(pMover, movementInfo);
 
 #if SUPPORTED_CLIENT_BUILD > CLIENT_BUILD_1_8_4
     // this is here to accommodate 1.14 client behavior
@@ -510,16 +507,17 @@ void WorldSession::HandleForceSpeedChangeAckOpcodes(WorldPacket& recvData)
         if ((pMover == _player->GetMover()) &&
             (!pPlayerMover || !pPlayerMover->IsBeingTeleported()))
         {
-            // Update position if it has changed.
-            HandleMoverRelocation(pMover, movementInfo);
             if (pPlayerMover)
                 pPlayerMover->UpdateFallInformationIfNeed(movementInfo, opcode);
+
+            // Update position if it has changed.
+            HandleMoverRelocation(pMover, movementInfo);
         }
         else
         {
             // Can only change flags and speed for not current active mover.
             pMover->m_movementInfo.moveFlags = movementInfo.moveFlags;
-            pMover->m_movementInfo.CorrectData(pMover);
+            pMover->m_movementInfo.CorrectData();
         }
     }
 
@@ -618,16 +616,17 @@ void WorldSession::HandleMovementFlagChangeToggleAck(WorldPacket& recvData)
         if ((pMover == _player->GetMover()) &&
             (!pPlayerMover || !pPlayerMover->IsBeingTeleported()))
         {
-            // Update position if it has changed.
-            HandleMoverRelocation(pMover, movementInfo);
             if (pPlayerMover)
                 pPlayerMover->UpdateFallInformationIfNeed(movementInfo, opcode);
+
+            // Update position if it has changed.
+            HandleMoverRelocation(pMover, movementInfo);
         }
         else
         {
             // Can only change flags and speed for not current active mover.
             pMover->m_movementInfo.moveFlags = movementInfo.moveFlags;
-            pMover->m_movementInfo.CorrectData(pMover);
+            pMover->m_movementInfo.CorrectData();
         }
     } while (false);
 
@@ -718,16 +717,17 @@ void WorldSession::HandleMoveRootAck(WorldPacket& recvData)
         if ((pMover == _player->GetMover()) &&
             (!pPlayerMover || !pPlayerMover->IsBeingTeleported()))
         {
-            // Update position if it has changed.
-            HandleMoverRelocation(pMover, movementInfo);
             if (pPlayerMover)
                 pPlayerMover->UpdateFallInformationIfNeed(movementInfo, opcode);
+
+            // Update position if it has changed.
+            HandleMoverRelocation(pMover, movementInfo);
         }
         else
         {
             // Can only change flags and speed for not current active mover.
             pMover->m_movementInfo.moveFlags = movementInfo.moveFlags;
-            pMover->m_movementInfo.CorrectData(pMover);
+            pMover->m_movementInfo.CorrectData();
         }
     } while (false);
 
@@ -814,6 +814,8 @@ void WorldSession::HandleMoveKnockBackAck(WorldPacket& recvData)
         {
             return;
         }
+
+        pPlayerMover->SetFallInformation(0);
     }
 
     HandleMoverRelocation(pMover, movementInfo);
@@ -860,9 +862,7 @@ void WorldSession::HandleMoveSplineDoneOpcode(WorldPacket& recvData)
             return;
 
         if (m_moveRejectTime = _player->GetCheatData()->HandleFlagTests(pPlayerMover, movementInfo, CMSG_MOVE_SPLINE_DONE))
-        {
             return;
-        }
     }
 
     HandleMoverRelocation(pMover, movementInfo);
@@ -1068,6 +1068,13 @@ Unit* WorldSession::GetMoverFromGuid(ObjectGuid const& guid) const
     return nullptr;
 }
 
+void WorldSession::RejectMovementPacketsFor(uint32 ms)
+{
+    uint32 timeout = WorldTimer::getMSTime() + ms;
+    if (m_moveRejectTime < timeout)
+        m_moveRejectTime = timeout;
+}
+
 bool WorldSession::VerifyMovementInfo(MovementInfo const& movementInfo) const
 {
     if (!MaNGOS::IsValidMapCoord(movementInfo.GetPos().x, movementInfo.GetPos().y, movementInfo.GetPos().z, movementInfo.GetPos().o))
@@ -1092,7 +1099,8 @@ void WorldSession::HandleMoverRelocation(Unit* pMover, MovementInfo& movementInf
 {
     Player* const pPlayerMover = pMover->ToPlayer();
 
-    movementInfo.CorrectData(pMover);
+    movementInfo.sourceSessionGuid = GetGUID();
+    movementInfo.CorrectData();
 
     // Prevent client from removing root flag.
     if (pMover->HasUnitMovementFlag(MOVEFLAG_ROOT) && !movementInfo.HasMovementFlag(MOVEFLAG_ROOT))
@@ -1148,7 +1156,7 @@ void WorldSession::HandleMoverRelocation(Unit* pMover, MovementInfo& movementInf
             // Undermap
             if ((pPlayerMover->GetPositionZ() + 100.0f) < hauteur)
                 undermap = true;
-            if (pPlayerMover->GetPositionZ() < 250.0f && pPlayerMover->GetMapId() == 489)
+            if (pPlayerMover->GetPositionZ() < 250.0f && pPlayerMover->GetMapId() == MAP_WARSONG_GULCH)
                 undermap = true;
 
             if (undermap)
@@ -1159,7 +1167,7 @@ void WorldSession::HandleMoverRelocation(Unit* pMover, MovementInfo& movementInf
             pPlayerMover->SaveNoUndermapPosition(pMover->m_movementInfo.GetPos().x, pMover->m_movementInfo.GetPos().y, pMover->m_movementInfo.GetPos().z + 3.0f, pMover->m_movementInfo.GetPos().o);
         
         // Antiundermap2: teleport to graveyard
-        if (pMover->m_movementInfo.GetPos().z < -500.0f)
+        if (pMover->m_movementInfo.GetPos().z < -500.0f && !pPlayerMover->IsGameMaster())
         {
             // NOTE: this is actually called many times while falling
             // even after the player has been teleported away

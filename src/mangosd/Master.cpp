@@ -153,7 +153,7 @@ Master::~Master()
 }
 
 // Main function
-int Master::Run(char serviceDaemonMode = '\0')
+int Master::Run()
 {
     // worldd PID file creation
     std::string pidfile = sConfig.GetStringDefault("PidFile", "");
@@ -176,6 +176,20 @@ int Master::Run(char serviceDaemonMode = '\0')
         Log::WaitBeforeContinueIfNeed();
         return 1;
     }
+
+    {
+        std::unique_ptr<QueryResult> result{LoginDatabase.PQuery("SELECT `name` FROM `realmlist` WHERE `id` = %d", realmID)};
+        if (!result)
+        {
+            sLog.Out(LOG_BASIC, LOG_LVL_ERROR, "Config contains invalid realmID %d, make sure its set in the `realmlist` table", realmID);
+            Log::WaitBeforeContinueIfNeed();
+            return 1;
+        }
+        realmName = (*result)[0].GetCppString();
+    }
+
+    sLog.Out(LOG_BASIC, LOG_LVL_MINIMAL, "World server is running realm ID: %d Name: \"%s\"", realmID, realmName.c_str());
+    sLog.Out(LOG_BASIC, LOG_LVL_MINIMAL, "");
 
     // Initialize the World
     sWorld.SetInitialWorldSettings();
@@ -210,7 +224,7 @@ int Master::Run(char serviceDaemonMode = '\0')
 #ifdef WIN32
     if (sConfig.GetBoolDefault("Console.Enable", true) && (m_ServiceStatus == -1)/* need disable console in service mode*/)
 #else
-    if (sConfig.GetBoolDefault("Console.Enable", true) && !serviceDaemonMode)
+    if (sConfig.GetBoolDefault("Console.Enable", true))
 #endif
     {
         // Launch CliRunnable thread
@@ -390,12 +404,9 @@ int Master::Run(char serviceDaemonMode = '\0')
         b[3].Event.KeyEvent.wRepeatCount = 1;
         DWORD numb;
         WriteConsoleInput(hStdIn, b, 4, &numb);
+#else
+        fclose(stdin);
 #endif
-        World::StopNow(SHUTDOWN_EXIT_CODE);
-        // End the database thread
-        sLog.Out(LOG_BASIC, LOG_LVL_MINIMAL, "Stopping WorldDatabase thread...");
-        WorldDatabase.ThreadEnd(); // free mySQL thread resources
-
         if (cliThread->joinable())
             cliThread->join();
 
@@ -484,8 +495,6 @@ bool Master::_StartDB()
         LogsDatabase.HaltDelayThread();
         return false;
     }
-
-    sLog.Out(LOG_BASIC, LOG_LVL_MINIMAL, "Realm running as realm ID %d", realmID);
 
     // Clean the database before starting
     clearOnlineAccounts();

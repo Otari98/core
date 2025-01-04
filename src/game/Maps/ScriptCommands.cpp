@@ -806,7 +806,7 @@ bool Map::ScriptCommand_SetMovementType(ScriptInfo const& script, WorldObject* s
             break;
         case FOLLOW_MOTION_TYPE:
             if (pTarget)
-                pSource->GetMotionMaster()->MoveFollow(pTarget, script.x, script.o);
+                pSource->GetMotionMaster()->MoveFollow(pTarget, script.x, script.o < 0 ? frand(0, 2 * M_PI_F) : script.o);
             break;
         case CHARGE_MOTION_TYPE:
             if (pTarget)
@@ -1349,7 +1349,7 @@ bool Map::ScriptCommand_RemoveGameObject(ScriptInfo const& script, WorldObject* 
     }
 
     pGo->SetLootState(GO_JUST_DEACTIVATED);
-    pGo->AddObjectToRemoveList();
+    pGo->Delete();
     return false;
 }
 
@@ -2314,22 +2314,8 @@ bool Map::ScriptCommand_DespawnGameObject(ScriptInfo const& script, WorldObject*
 // SCRIPT_COMMAND_LOAD_GAMEOBJECT_SPAWN (82)
 bool Map::ScriptCommand_LoadGameObject(ScriptInfo const& script, WorldObject* source, WorldObject* target)
 {
-    GameObjectData const* pGameObjectData = sObjectMgr.GetGOData(script.loadGo.goGuid);
-
-    if (GetId() != pGameObjectData->position.mapId)
-    {
-        sLog.Out(LOG_SCRIPTS, LOG_LVL_ERROR, "SCRIPT_COMMAND_LOAD_GAMEOBJECT_SPAWN (script id %u) tried to spawn guid %u on wrong map %u.", script.id, script.loadGo.goGuid, GetId());
+    if (!LoadGameObjectSpawn(script.loadGo.goGuid))
         return ShouldAbortScript(script);
-    }
-
-    if (GetGameObject(ObjectGuid(HIGHGUID_GAMEOBJECT, pGameObjectData->id, script.loadGo.goGuid)))
-        return ShouldAbortScript(script); // already spawned
-
-    GameObject* pGameobject = GameObject::CreateGameObject(pGameObjectData->id);
-    if (!pGameobject->LoadFromDB(script.loadGo.goGuid, this, true))
-        delete pGameobject;
-    else
-        Add(pGameobject);
 
     return false;
 }
@@ -2528,6 +2514,10 @@ bool Map::ScriptCommand_StartScriptOnZone(ScriptInfo const& script, WorldObject*
         if (itr.getSource()->GetCachedZoneId() == script.startScriptOnZone.zoneId)
         {
             ScriptsStart(sGenericScripts, script.startScriptOnZone.scriptId, itr.getSource()->GetObjectGuid(), target ? target->GetObjectGuid() : ObjectGuid());
+
+            if (script.startScriptOnZone.withPets)
+                if (Pet* pPet = itr.getSource()->GetPet())
+                    ScriptsStart(sGenericScripts, script.startScriptOnZone.scriptId, pPet->GetObjectGuid(), target ? target->GetObjectGuid() : ObjectGuid());
         }
     }
 

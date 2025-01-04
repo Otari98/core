@@ -43,11 +43,9 @@
 #include "PlayerBotAI.h"
 #include "Anticheat.h"
 #include "Language.h"
-#include "Auth/Sha1.h"
 #include "Chat.h"
 #include "MasterPlayer.h"
-
-#include <openssl/md5.h>
+#include "Crypto/Hash/MD5.h"
 
 // select opcodes appropriate for processing in Map::Update context for current session state
 static bool MapSessionFilterHelper(WorldSession* session, OpcodeHandler const& opHandle)
@@ -78,7 +76,7 @@ WorldSession::WorldSession(uint32 id, WorldSocket *sock, AccountTypes sec, time_
     m_exhaustionState(0), m_createTime(time(nullptr)), m_previousPlayTime(0), m_logoutTime(0), m_inQueue(false),
     m_playerLoading(false), m_playerLogout(false), m_playerRecentlyLogout(false), m_playerSave(false), m_sessionDbcLocale(sWorld.GetAvailableDbcLocale(locale)),
     m_sessionDbLocaleIndex(sObjectMgr.GetIndexForLocale(locale)), m_latency(0), m_tutorialState(TUTORIALDATA_UNCHANGED), m_warden(nullptr), m_cheatData(nullptr),
-    m_bot(nullptr), m_clientOS(CLIENT_OS_UNKNOWN), m_clientPlatform(CLIENT_PLATFORM_UNKNOWN), m_gameBuild(0),
+    m_bot(nullptr), m_clientOS(CLIENT_OS_UNKNOWN), m_clientPlatform(CLIENT_PLATFORM_UNKNOWN), m_gameBuild(0), m_verifiedEmail(true),
     m_charactersCount(10), m_characterMaxLevel(0), m_lastPubChannelMsgTime(0), m_moveRejectTime(0), m_masterPlayer(nullptr)
 {
     if (sock)
@@ -208,8 +206,13 @@ void WorldSession::SendMovementPacket(WorldPacket const* packet)
 
     if (++m_movePacketsSentThisInterval < sWorld.getConfig(CONFIG_UINT32_COMPRESSION_MOVEMENT_COUNT) &&
         m_movePacketsSentLastInterval < sWorld.getConfig(CONFIG_UINT32_COMPRESSION_MOVEMENT_COUNT))
+    {
         SendPacketImpl(packet);
-    else if (m_movementPacketCompressor.CanAddPacket(*packet))
+        return;
+    }
+        
+    std::lock_guard<std::mutex> guard(m_movementPacketCompressorMutex);
+    if (m_movementPacketCompressor.CanAddPacket(*packet))
         m_movementPacketCompressor.AddPacket(*packet);
     else
     {
@@ -317,6 +320,11 @@ void WorldSession::LogUnprocessedTail(WorldPacket* packet)
                   LookupOpcodeName(packet->GetOpcode()),
                   packet->GetOpcode(),
                   packet->rpos(), packet->wpos());
+}
+
+bool WorldSession::HasTrialRestrictions() const
+{
+    return !HasVerifiedEmail() && GetSecurity() <= SEC_PLAYER && sWorld.getConfig(CONFIG_BOOL_RESTRICT_UNVERIFIED_ACCOUNTS);
 }
 
 void WorldSession::CheckPlayedTimeLimit(time_t now)
@@ -677,7 +685,7 @@ void WorldSession::LogoutPlayer(bool Save)
         });
 
         // Teleport to home if the player is in an invalid instance
-        if (!_player->m_InstanceValid && !_player->IsGameMaster())
+        if (!_player->m_instanceValid && !_player->IsGameMaster())
         {
             _player->TeleportToHomebind();
             //this is a bad place to call for far teleport because we need player to be in world for successful logout
@@ -1025,9 +1033,11 @@ void WorldSession::SetAccountData(NewAccountData::AccountDataType type, const st
 
 void WorldSession::SendAccountDataTimes()
 {
+    using namespace Crypto::Hash;
+
     bool const isOldClient = GetGameBuild() <= CLIENT_BUILD_1_8_4;
     uint32 const dataCount = isOldClient ? OldAccountData::NUM_ACCOUNT_DATA_TYPES : NewAccountData::NUM_ACCOUNT_DATA_TYPES;
-    WorldPacket data(SMSG_ACCOUNT_DATA_MD5, dataCount * MD5_DIGEST_LENGTH);
+    WorldPacket data(SMSG_ACCOUNT_DATA_MD5, dataCount * MD5::Digest::size());
     for (uint32 index = 0; index < NewAccountData::NUM_ACCOUNT_DATA_TYPES; ++index)
     {
         // Skip indexes that dont exist in old clients
@@ -1038,22 +1048,9 @@ void WorldSession::SendAccountDataTimes()
                 continue;
         }
 
-        AccountData const& itr = m_accountData[index];
-        if (itr.data.empty())
-        {
-            for (int i = 0; i < MD5_DIGEST_LENGTH; i++)
-                data << uint8(0);
-        }
-        else
-        {
-            MD5_CTX md5;
-            MD5_Init(&md5);
-            MD5_Update(&md5, itr.data.c_str(), itr.data.size());
-
-            uint8 fileHash[MD5_DIGEST_LENGTH];
-            MD5_Final(fileHash, &md5);
-            data.append(fileHash, MD5_DIGEST_LENGTH);
-        }
+        std::string const& accountData = m_accountData[index].data;
+        MD5::Digest hash = accountData.empty() ? MD5::CreateEmpty() : MD5::ComputeFrom(accountData);
+        data.append(hash.data(), hash.size());
     }
     SendPacket(&data);
 }
@@ -1145,7 +1142,7 @@ void WorldSession::ExecuteOpcode(OpcodeHandler const& opHandle, WorldPacket* pac
         //we should execute delayed teleports only for alive(!) players
         //because we don't want player's ghost teleported from graveyard
         if (_player->IsHasDelayedTeleport())
-            _player->TeleportTo(_player->m_teleport_dest, _player->m_teleport_options);
+            _player->TeleportTo(_player->m_teleportDest, _player->m_teleportOptions);
     }
     if (packet->rpos() < packet->wpos() && sLog.HasLogLevelOrHigher(LOG_LVL_DEBUG))
         LogUnprocessedTail(packet);
@@ -1328,7 +1325,7 @@ bool WorldSession::CharacterScreenIdleKick(uint32 currTime)
     if (!maxIdle) // disabled
         return false;
 
-    if ((currTime - m_idleTime) >= (maxIdle * 1000))
+    if (currTime > m_idleTime && (currTime - m_idleTime) >= (maxIdle * 1000))
     {
         sLog.Out(LOG_BASIC, LOG_LVL_DEBUG, "SESSION: Kicking session [%s] from character selection", GetRemoteAddress().c_str());
         return true;

@@ -28,7 +28,6 @@
 #include "ProgressBar.h"
 
 #include <stdarg.h>
-#include <fstream>
 #include <iostream>
 
 #include "ace/OS_NS_unistd.h"
@@ -444,14 +443,6 @@ void Log::OutFile(LogType logType, LogLevel logLevel, std::string const& str) co
     fputs("\n", logFiles[logType]);
     fflush(logFiles[logType]);
 }
-
-#ifndef USE_ANTICHEAT
-
-void Log::OutWarden(Warden const* /*warden*/, LogLevel /*logLevel*/, char const* /*format*/, ...)
-{
-}
-
-#endif
 
 bool Log::IsSmartLog(uint32 entry, uint32 guid) const
 {

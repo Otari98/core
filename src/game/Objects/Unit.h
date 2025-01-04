@@ -164,6 +164,28 @@ struct SpellPeriodicAuraLogInfo
     float  multiplier;
 };
 
+struct AttackPowerModInfo
+{
+    float positiveMods = 0; // int16 in client
+    float negativeMods = 0; // int16 in client
+    float multiplier = 1.0f;
+};
+
+enum AttackPowerModType
+{
+    AP_MOD_POSITIVE_FLAT,
+    AP_MOD_NEGATIVE_FLAT,
+    AP_MOD_PCT,
+    AP_MOD_TYPE_COUNT,
+};
+
+enum AttackPowerModIndex
+{
+    MELEE_AP_MODS,
+    RANGED_AP_MODS,
+    AP_MODS_COUNT,
+};
+
 uint32 CreateProcExtendMask(SpellNonMeleeDamage* damageInfo, SpellMissInfo missCondition);
 
 enum SpellProcEventTriggerCheck
@@ -341,7 +363,7 @@ class Unit : public SpellCaster
         typedef std::set<uint32> ComboPointHolderSet;
         typedef std::map<SpellEntry const*, ObjectGuid> SingleCastSpellTargetMap;
 
-        virtual ~Unit () override;
+        virtual ~Unit() override;
 
         void AddToWorld() override;
         void RemoveFromWorld() override;
@@ -356,6 +378,7 @@ class Unit : public SpellCaster
         float m_createStats[MAX_STATS];
         int32 m_createResistances[MAX_SPELL_SCHOOL];
         float m_auraModifiersGroup[UNIT_MOD_END][MODIFIER_TYPE_END];
+        AttackPowerModInfo m_attackPowerMods[AP_MODS_COUNT];
         WeaponDamageInfo m_weaponDamage[MAX_ATTACK][MAX_ITEM_PROTO_DAMAGES];
         uint8 m_weaponDamageCount[MAX_ATTACK];
         bool m_canModifyStats;
@@ -379,7 +402,7 @@ class Unit : public SpellCaster
     public:
         // Data
         float m_modSpellHitChance;
-        int32 m_baseSpellCritChance;
+        float m_modSpellCritChance[MAX_SPELL_SCHOOL];
         float m_threatModifier[MAX_SPELL_SCHOOL];
         float m_modAttackSpeedPct[3];
         float m_modRecalcDamagePct[3];
@@ -442,10 +465,17 @@ class Unit : public SpellCaster
         float GetUnitParryChance() const;
         float GetUnitBlockChance() const;
         float GetUnitCriticalChance(WeaponAttackType attackType, Unit const* pVictim) const;
+        float GetSpellCritFromIntellect() const;
+        float GetSpellCritPercent(SpellSchools school) const { return m_modSpellCritChance[school]; }
+        void SetSpellCritPercent(SpellSchools school, float percent) { m_modSpellCritChance[school] = percent; }
+        void UpdateAllSpellCritChances();
+        void UpdateSpellCritChance(uint32 school);
 
         virtual uint32 GetShieldBlockValue() const = 0;
         float GetPPMProcChance(uint32 WeaponSpeed, float PPM) const;
 
+        bool HandleAttackPowerModifier(AttackPowerModIndex index, AttackPowerModType modifierType, float amount, bool apply);
+        float GetAttackPowerModifierValue(AttackPowerModIndex index, AttackPowerModType modifierType) const;
         bool HandleStatModifier(UnitMods unitMod, UnitModifierType modifierType, float amount, bool apply);
         void SetModifierValue(UnitMods unitMod, UnitModifierType modifierType, float value) { m_auraModifiersGroup[unitMod][modifierType] = value; }
         float GetModifierValue(UnitMods unitMod, UnitModifierType modifierType) const;
@@ -602,13 +632,13 @@ class Unit : public SpellCaster
         /*********************************************************/
 
     private:
-        UnitVisibility m_Visibility;
-        Position m_last_notified_position;
+        UnitVisibility m_visibility;
+        Position m_lastNotifiedPosition;
     public:
         uint32 m_detectInvisibilityMask;
         uint32 m_invisibilityMask;
         virtual bool CanBeDetected() const { return true; }
-        UnitVisibility GetVisibility() const { return m_Visibility; }
+        UnitVisibility GetVisibility() const { return m_visibility; }
         void SetVisibility(UnitVisibility x);
         void UpdateVisibilityAndView() override;
 
@@ -767,7 +797,7 @@ class Unit : public SpellCaster
         ObjectGuid m_ObjectSlotGuid[4];
 
         uint32 m_lastSanctuaryTime; // Used by SPELL_EFFECT_SANCTUARY.
-        bool m_AutoRepeatFirstCast; // auto shoot and wand
+        bool m_autoRepeatFirstCast; // auto shoot and wand
 
         SingleCastSpellTargetMap      & GetSingleCastSpellTargets() { return m_singleCastSpellTargets; }
         SingleCastSpellTargetMap const& GetSingleCastSpellTargets() const { return m_singleCastSpellTargets; }
@@ -908,8 +938,8 @@ class Unit : public SpellCaster
         bool m_doExtraAttacks;
         float m_meleeZLimit;
         float m_meleeZReach;
-        ThreatManager m_ThreatManager; // Manage all Units threatening us
-        HostileRefManager m_HostileRefManager; // Manage all Units that are threatened by us (has list of creatures that have us in their threat list)
+        ThreatManager m_threatManager; // Manage all Units threatening us
+        HostileRefManager m_hostileRefManager; // Manage all Units that are threatened by us (has list of creatures that have us in their threat list)
         std::vector<ObjectGuid> m_tauntGuids;
     protected:
         uint32 m_attackTimer[MAX_ATTACK];
@@ -1106,13 +1136,13 @@ class Unit : public SpellCaster
         void RemoveAttackersThreat(Unit* owner);
         void DoResetThreat();
         void DeleteThreatList();
-        ThreatManager& GetThreatManager() { return m_ThreatManager; }
-        ThreatManager const& GetThreatManager() const { return m_ThreatManager; }
+        ThreatManager& GetThreatManager() { return m_threatManager; }
+        ThreatManager const& GetThreatManager() const { return m_threatManager; }
 
-        void AddHatedBy(HostileReference* pHostileReference) { m_HostileRefManager.insertFirst(pHostileReference); };
+        void AddHatedBy(HostileReference* pHostileReference) { m_hostileRefManager.insertFirst(pHostileReference); };
         void RemoveHatedBy(HostileReference* /*pHostileReference*/) { /* nothing to do yet */ }
-        HostileRefManager& GetHostileRefManager() { return m_HostileRefManager; }
-        HostileRefManager const& GetHostileRefManager() const { return m_HostileRefManager; }
+        HostileRefManager& GetHostileRefManager() { return m_hostileRefManager; }
+        HostileRefManager const& GetHostileRefManager() const { return m_hostileRefManager; }
 
         // Script Helpers
         uint8 GetEnemyCountInRadiusAround(Unit const* pTarget, float radius) const;
@@ -1164,9 +1194,9 @@ class Unit : public SpellCaster
     private:
         Unit* _GetTotem(TotemSlot slot) const;              // for templated function without include need
         Pet* _GetPet(ObjectGuid guid) const;                // for templated function without include need
-        FollowerRefManager m_FollowingRefManager;
+        FollowerRefManager m_followingRefManager;
         GuardianPetList m_guardianPets;
-        ObjectGuid m_TotemSlot[MAX_TOTEM_SLOT];
+        ObjectGuid m_totemSlot[MAX_TOTEM_SLOT];
     protected:
         CharmInfo* m_charmInfo;
         ObjectGuid m_possessorGuid; // Guid of unit possessing this one
@@ -1230,7 +1260,7 @@ class Unit : public SpellCaster
         uint32 GetGuardianCountWithEntry(uint32 entry);
         uint32 GetGuardiansCount() const;
 
-        ObjectGuid const& GetTotemGuid(TotemSlot slot) const { return m_TotemSlot[slot]; }
+        ObjectGuid const& GetTotemGuid(TotemSlot slot) const { return m_totemSlot[slot]; }
         Totem* GetTotem(TotemSlot slot) const;
         bool IsAllTotemSlotsUsed() const;
         void _AddTotem(TotemSlot slot, Totem* totem);       // only for call from Totem summon code
@@ -1285,7 +1315,7 @@ class Unit : public SpellCaster
         template<typename Func>
         bool CheckAllControlledUnits(Func const& func, uint32 controlledMask) const;
 
-        void AddFollower(FollowerReference* pRef) { m_FollowingRefManager.insertFirst(pRef); }
+        void AddFollower(FollowerReference* pRef) { m_followingRefManager.insertFirst(pRef); }
         void RemoveFollower(FollowerReference* /*pRef*/) { /* nothing to do yet */ }
 
         /*********************************************************/
@@ -1299,11 +1329,11 @@ class Unit : public SpellCaster
         std::map<MovementChangeType, uint32> m_lastMovementChangeCounterPerType;
         bool m_hasPendingSplineDone = false;
         float m_casterChaseDistance;
-        float m_speed_rate[MAX_MOVE_TYPE];
+        float m_speedRates[MAX_MOVE_TYPE];
         float m_jumpInitialSpeed = 0;
         void UpdateSplineMovement(uint32 t_diff);
     protected:
-        MotionMaster i_motionMaster;
+        MotionMaster m_motionMaster;
     public:
         void SendHeartBeat(bool includingSelf = true);
         void SendMovementPacket(uint16 opcode, bool includingSelf = true);
@@ -1327,7 +1357,6 @@ class Unit : public SpellCaster
         bool IsFallingSlow() const { return m_movementInfo.HasMovementFlag(MOVEFLAG_SAFE_FALL); }
 
         void SetLevitate(bool apply);
-        bool IsLevitating() const { return m_movementInfo.HasMovementFlag(MOVEFLAG_LEVITATING); }
 
         void KnockBackFrom(WorldObject const* target, float horizontalSpeed, float verticalSpeed);
         void KnockBack(float angle, float horizontalSpeed, float verticalSpeed);
@@ -1365,7 +1394,7 @@ class Unit : public SpellCaster
         float GetSpeed(UnitMoveType mtype) const;
         float GetXZFlagBasedSpeed() const;
         float GetXZFlagBasedSpeed(uint32 moveFlags) const;
-        float GetSpeedRate(UnitMoveType mtype) const { return m_speed_rate[mtype]; }
+        float GetSpeedRate(UnitMoveType mtype) const { return m_speedRates[mtype]; }
         void PropagateSpeedChange() { GetMotionMaster()->PropagateSpeedChange(); }
         float GetSpeedForMovementInfo(MovementInfo const& movementInfo) const;
         bool ExtrapolateMovement(MovementInfo const& mi, uint32 diffMs, float &x, float &y, float &z, float &o) const;
@@ -1394,8 +1423,8 @@ class Unit : public SpellCaster
         bool IsBehindTarget(Unit const* pTarget, bool strict = true) const;
         bool CantPathToVictim() const;
 
-        MotionMaster* GetMotionMaster() { return &i_motionMaster; }
-        MotionMaster const* GetMotionMaster() const { return &i_motionMaster; }
+        MotionMaster* GetMotionMaster() { return &m_motionMaster; }
+        MotionMaster const* GetMotionMaster() const { return &m_motionMaster; }
         void RestoreMovement();
 
         template <class T>

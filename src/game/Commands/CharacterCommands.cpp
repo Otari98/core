@@ -28,7 +28,6 @@
 #include "Language.h"
 #include "AccountMgr.h"
 #include "ObjectMgr.h"
-#include "SystemConfig.h"
 #include "Util.h"
 #include "AsyncCommandHandlers.h"
 #include "WaypointMovementGenerator.h"
@@ -113,6 +112,29 @@ bool ChatHandler::HandleCheatFlyCommand(char* args)
 
     if (value)
         ChatHandler(target).SendSysMessage("WARNING: Do not jump or flying mode will be removed.");
+
+    return true;
+}
+
+bool ChatHandler::HandleCheatFixedZCommand(char* args)
+{
+    bool value;
+    if (!ExtractOnOff(&args, value))
+    {
+        SendSysMessage(LANG_USE_BOL);
+        SetSentErrorMessage(true);
+        return false;
+    }
+
+    Player* target = GetSelectedPlayer();
+    if (!target)
+        target = m_session->GetPlayer();
+
+    target->SetCheatFixedZ(value, true);
+
+    PSendSysMessage(LANG_YOU_SET_FIXED_Z, value ? "on" : "off", GetNameLink(target).c_str());
+    if (needReportToTarget(target))
+        ChatHandler(target).PSendSysMessage(LANG_YOUR_FIXED_Z_SET, value ? "on" : "off", GetNameLink().c_str());
 
     return true;
 }
@@ -599,6 +621,8 @@ bool ChatHandler::HandleCheatStatusCommand(char* args)
         SendSysMessage("- Wall climbing");
     if (target->HasCheatOption(PLAYER_CHEAT_DEBUG_TARGET_INFO))
         SendSysMessage("- Debug target info");
+    if (target->HasCheatOption(PLAYER_CHEAT_FIXED_Z))
+        SendSysMessage("- Fixed Z");
 
     return true;
 }

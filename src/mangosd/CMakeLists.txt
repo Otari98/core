@@ -16,23 +16,18 @@
 # Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 
 set(EXECUTABLE_NAME mangosd)
-set(EXECUTABLE_SRCS 
+set(EXECUTABLE_SRCS
   CliRunnable.h
   MaNGOSsoap.h
   Master.h
   RASocket.h
-  soapH.h
-  soapStub.h
   WorldRunnable.h
   CliRunnable.cpp
   Main.cpp
   MaNGOSsoap.cpp
   Master.cpp
   RASocket.cpp
-  soapC.cpp
-  soapServer.cpp
   WorldRunnable.cpp
-
 )
 
 
@@ -40,13 +35,11 @@ if(WIN32)
   list(APPEND EXECUTABLE_SRCS
     mangosd.rc
   )
-  
+
   set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} /D__ACE_INLINE__")
 endif()
 
 include_directories(
-  ${CMAKE_SOURCE_DIR}/src/shared
-  ${CMAKE_SOURCE_DIR}/dep/include/gsoap
   ${CMAKE_SOURCE_DIR}/dep/include/g3dlite
   ${CMAKE_SOURCE_DIR}/src/framework
   ${CMAKE_SOURCE_DIR}/src/framework/Network
@@ -75,8 +68,6 @@ include_directories(
   ${CMAKE_SOURCE_DIR}/src/game/Threat
   ${CMAKE_SOURCE_DIR}/src/game/Transports
   ${CMAKE_SOURCE_DIR}/src/game/vmap
-  ${CMAKE_BINARY_DIR}/src/shared
-  ${CMAKE_BINARY_DIR}
   ${ACE_INCLUDE_DIR}
   ${MYSQL_INCLUDE_DIR}
   ${OPENSSL_INCLUDE_DIR}
@@ -148,10 +139,6 @@ if(UNIX)
   )
 endif()
 
-target_link_libraries(${EXECUTABLE_NAME}
-    readline
-)
-
 set(EXECUTABLE_LINK_FLAGS "")
 
 if(UNIX)
@@ -159,8 +146,6 @@ if(UNIX)
 endif()
 
 if(APPLE)
-  include_directories(/usr/local/opt/readline/include)
-  link_directories(/usr/local/opt/readline/lib)
   set(EXECUTABLE_LINK_FLAGS "-framework Carbon ${EXECUTABLE_LINK_FLAGS}")
 endif()
 
@@ -174,5 +159,5 @@ configure_file(${CMAKE_CURRENT_SOURCE_DIR}/mangosd.conf.dist.in ${CMAKE_CURRENT_
 install(FILES ${CMAKE_CURRENT_BINARY_DIR}/mangosd.conf.dist DESTINATION ${CONF_DIR})
 
 if(WIN32 AND MSVC)
-  install(FILES ${CMAKE_SOURCE_DIR}/bin/Debug/${EXECUTABLE_NAME}.pdb DESTINATION ${BIN_DIR} CONFIGURATIONS Debug)
+  install(FILES $<TARGET_PDB_FILE:${EXECUTABLE_NAME}> DESTINATION ${BIN_DIR} OPTIONAL)
 endif()
